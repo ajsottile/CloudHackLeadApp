@@ -153,87 +153,219 @@ class LLMService {
    * @param {object} [options.websiteAnalysis] - Website analysis from Firecrawl
    */
   async generateOutreachEmail({ prospect, template, context = {}, websiteAnalysis = null }) {
-    // Build context about website analysis if available
-    let analysisContext = '';
-    if (websiteAnalysis?.analysis) {
-      const analysis = websiteAnalysis.analysis;
-      analysisContext = `
-WEBSITE ANALYSIS (from Firecrawl):
-- Overall Digital Score: ${analysis.overallScore || 'N/A'}/10
-- Summary: ${analysis.summary || 'N/A'}
-${analysis.opportunities?.length > 0 ? `
-TOP OPPORTUNITIES IDENTIFIED:
-${analysis.opportunities.slice(0, 3).map(o => `• ${o.title}: ${o.description} (${o.impact} impact)`).join('\n')}
-` : ''}
-${analysis.weaknesses?.length > 0 ? `
-WEAKNESSES NOTED:
-${analysis.weaknesses.slice(0, 3).map(w => `• ${w}`).join('\n')}
-` : ''}
-${analysis.recommendedPitch ? `
-RECOMMENDED PITCH ANGLE: ${analysis.recommendedPitch}
-` : ''}
+    // Build intelligent context from all available data
+    const businessContext = this.buildBusinessContext(prospect, websiteAnalysis);
+    
+    const systemPrompt = `You are Anthony, founder of CloudHack — a boutique AI & data consulting firm that helps businesses unlock operational efficiency through intelligent automation and data infrastructure.
 
-IMPORTANT: Use the website analysis insights to make the email highly specific and valuable. Reference concrete opportunities you noticed about their website/business.`;
-    }
+YOUR VOICE & TONE:
+- Sound like a curious founder who genuinely noticed something interesting about their business
+- Direct, confident, but never pushy or salesy
+- Write like you're texting a smart colleague, not writing marketing copy
+- Short sentences. No fluff. Every word earns its place.
+- NEVER use phrases like: "I hope this finds you well", "reaching out", "touching base", "circle back", "synergies"
 
-    const systemPrompt = `You are an expert B2B sales copywriter for CloudHack, a tech consulting company. 
-Your job is to write personalized, compelling cold emails that feel genuine and human.
+CLOUDHACK'S HIGH-VALUE OFFERINGS (pick the 1-2 most relevant to this business):
+1. **AI-Powered Workflow Automation** — Eliminate repetitive tasks, reduce labor costs 40-60%, free teams for strategic work
+2. **Predictive Analytics & Forecasting** — Dynamic demand forecasting, inventory optimization, data-driven budgeting that adapts in real-time
+3. **Manufacturing & Operations Intelligence** — Process optimization, predictive maintenance, quality control automation, supply chain visibility
+4. **Data Infrastructure & BI** — Build the analytics backbone: data warehouses, dashboards, self-serve reporting that actually gets used
+5. **AI-Enhanced Decision Support** — From M&A due diligence to market analysis, augment executive decisions with AI-processed insights
+6. **Customer Intelligence Systems** — Churn prediction, lifetime value optimization, personalized engagement at scale
 
-Guidelines:
-- Be conversational and friendly, not corporate or salesy
-- Reference specific details about the business when available
-- Keep emails concise (under 200 words)
-- Include a clear, low-pressure call to action
-- Avoid overused phrases like "I hope this email finds you well"
-- Make the value proposition clear and relevant to their business
-${websiteAnalysis ? '- USE THE WEBSITE ANALYSIS to craft a highly targeted, specific pitch that demonstrates you understand their business' : ''}
+STRATEGIC APPROACH:
+- Lead with a specific observation about THEIR business (use the data provided)
+- Connect that observation to a tangible outcome (cost savings, revenue, time)
+- Make them curious about what's possible, don't pitch features
+- End with ONE low-friction ask (15-min call, not a sales meeting)
 
-CloudHack services:
-- Web development (modern, mobile-friendly websites)
-- Cloud integration and migrations
-- AI/ML implementations (chatbots, automation, data analysis)
-- Custom SaaS product development
-- Business intelligence and dashboards`;
+EMAIL STRUCTURE:
+- Opening: Reference something specific you noticed (1-2 sentences)
+- Insight: Share a relevant pattern or opportunity (2-3 sentences)  
+- Proof point: Brief example or outcome if natural (1 sentence, optional)
+- Ask: Single, specific call to action (1 sentence)
+- Keep total under 150 words — busy executives skim`;
 
-    const prompt = `Generate a personalized cold email for this prospect:
+    const prompt = `Write a highly personalized cold email for this prospect. Use the business intelligence below to craft something that feels researched, not templated.
 
-Business Name: ${prospect.business_name}
-Category/Industry: ${prospect.category || 'Unknown'}
-Location: ${prospect.city ? `${prospect.city}, ${prospect.state}` : 'Unknown'}
-Rating: ${prospect.rating || 'N/A'} stars (${prospect.review_count || 0} reviews)
-Has Website: ${prospect.website_url ? 'Yes' : 'No'}
-${analysisContext}
+===== BUSINESS INTELLIGENCE =====
+${businessContext}
 
-${template ? `Base your email on this template style:\n${template.body}\n\nBut personalize it significantly for this specific business.` : ''}
+===== TASK =====
+${template ? `Reference this template for tone/structure, but make it highly specific:\n${template.body}\n` : ''}
+${context.followUpNumber ? `This is follow-up #${context.followUpNumber}. Be more direct, reference that you reached out before.` : ''}
 
-${context.followUpNumber ? `This is follow-up #${context.followUpNumber}. Reference previous outreach and be more direct.` : ''}
+Based on their industry, size indicators, and any analysis data:
+1. Identify the SINGLE most compelling angle for this specific business
+2. Write an email that makes them think "this person actually understands my business"
+3. Focus on outcomes (cost savings, efficiency gains, competitive advantage) not features
 
-Return ONLY the email content, no subject line or extra formatting. The email should start with a greeting.`;
+Return ONLY the email body. Start with a personalized greeting using their name or business name.`;
 
     const result = await this.complete({ prompt, systemPrompt, temperature: 0.8 });
     return result;
   }
 
   /**
+   * Build rich business context from all available data
+   */
+  buildBusinessContext(prospect, websiteAnalysis) {
+    const parts = [];
+    
+    // Core business info
+    parts.push(`BUSINESS: ${prospect.business_name}`);
+    parts.push(`INDUSTRY: ${prospect.category || 'Unknown'}`);
+    parts.push(`LOCATION: ${prospect.city ? `${prospect.city}, ${prospect.state}` : 'Unknown'}`);
+    
+    // Size & reputation indicators
+    if (prospect.rating || prospect.review_count) {
+      const sizeIndicator = prospect.review_count > 500 ? 'Large/established' : 
+                           prospect.review_count > 100 ? 'Mid-size' : 
+                           prospect.review_count > 20 ? 'Growing' : 'Small/local';
+      parts.push(`SIZE INDICATOR: ${sizeIndicator} (${prospect.rating || 'N/A'}★, ${prospect.review_count || 0} reviews)`);
+    }
+    
+    // Digital presence
+    parts.push(`HAS WEBSITE: ${prospect.website_url ? 'Yes - ' + prospect.website_url : 'No'}`);
+    
+    // Website analysis if available
+    if (websiteAnalysis?.analysis) {
+      const analysis = websiteAnalysis.analysis;
+      parts.push(`\n----- WEBSITE ANALYSIS -----`);
+      if (analysis.overallScore) parts.push(`Digital Maturity Score: ${analysis.overallScore}/10`);
+      if (analysis.summary) parts.push(`Summary: ${analysis.summary}`);
+      
+      if (analysis.techStack?.length > 0) {
+        parts.push(`Tech Stack Detected: ${analysis.techStack.join(', ')}`);
+      }
+      
+      if (analysis.opportunities?.length > 0) {
+        parts.push(`\nOPPORTUNITIES IDENTIFIED:`);
+        analysis.opportunities.slice(0, 3).forEach(o => {
+          parts.push(`• ${o.title}: ${o.description} (${o.impact} impact)`);
+        });
+      }
+      
+      if (analysis.weaknesses?.length > 0) {
+        parts.push(`\nWEAKNESSES/GAPS:`);
+        analysis.weaknesses.slice(0, 3).forEach(w => {
+          parts.push(`• ${w}`);
+        });
+      }
+      
+      if (analysis.competitors?.length > 0) {
+        parts.push(`\nCOMPETITOR INTEL: ${analysis.competitors.join(', ')}`);
+      }
+      
+      if (analysis.recommendedPitch) {
+        parts.push(`\nRECOMMENDED ANGLE: ${analysis.recommendedPitch}`);
+      }
+    }
+    
+    // Industry-specific insights
+    const industryInsights = this.getIndustryInsights(prospect.category);
+    if (industryInsights) {
+      parts.push(`\n----- INDUSTRY CONTEXT -----`);
+      parts.push(industryInsights);
+    }
+    
+    return parts.join('\n');
+  }
+
+  /**
+   * Get industry-specific pain points and opportunities
+   */
+  getIndustryInsights(category) {
+    if (!category) return null;
+    
+    const categoryLower = category.toLowerCase();
+    
+    const industryMap = {
+      'restaurant|food|dining|cafe|bar': `
+Common pain points: Labor costs (30-35% of revenue), food waste, inconsistent demand forecasting, thin margins (3-5%)
+AI opportunities: Demand forecasting to optimize staffing/inventory, automated scheduling, waste reduction through predictive ordering
+Typical ROI: 15-25% reduction in food waste, 10-20% labor cost optimization`,
+      
+      'retail|shop|store|boutique': `
+Common pain points: Inventory management, demand forecasting, customer retention, omnichannel complexity
+AI opportunities: Predictive inventory, personalized marketing automation, customer lifetime value optimization, dynamic pricing
+Typical ROI: 20-30% inventory cost reduction, 15-25% increase in repeat purchases`,
+      
+      'manufacturing|industrial|factory|production': `
+Common pain points: Downtime costs ($260K/hr avg), quality control, supply chain visibility, skilled labor shortage
+AI opportunities: Predictive maintenance, automated QC, demand-driven production scheduling, digital twin simulations
+Typical ROI: 25-40% reduction in unplanned downtime, 20-35% quality improvement`,
+      
+      'healthcare|medical|clinic|dental|health': `
+Common pain points: Administrative burden (30% of costs), scheduling inefficiency, patient no-shows, compliance documentation
+AI opportunities: Automated scheduling/reminders, clinical documentation, patient flow optimization, predictive staffing
+Typical ROI: 20-30% reduction in no-shows, 25-40% admin time savings`,
+      
+      'professional services|consulting|legal|accounting|agency': `
+Common pain points: Utilization rates, project profitability tracking, knowledge management, proposal generation
+AI opportunities: Resource optimization, automated reporting, AI-assisted research/analysis, intelligent document processing
+Typical ROI: 15-25% improvement in utilization, 30-50% faster proposal/report generation`,
+      
+      'real estate|property|realty': `
+Common pain points: Lead qualification, market analysis time, property valuation accuracy, transaction coordination
+AI opportunities: Predictive lead scoring, automated market comps, AI-powered valuations, transaction workflow automation
+Typical ROI: 40-60% reduction in lead qualification time, 20-30% faster closings`,
+      
+      'fitness|gym|wellness|spa|salon': `
+Common pain points: Member retention (avg 50% annual churn), scheduling gaps, personalization at scale
+AI opportunities: Churn prediction, dynamic scheduling optimization, personalized engagement sequences, demand forecasting
+Typical ROI: 15-25% improvement in retention, 20-30% better capacity utilization`,
+      
+      'automotive|car|auto|repair|dealership': `
+Common pain points: Service scheduling, parts inventory, customer follow-up, technician utilization
+AI opportunities: Predictive maintenance recommendations, inventory optimization, automated service reminders, dynamic pricing
+Typical ROI: 20-30% parts inventory optimization, 25-35% improvement in service bay utilization`,
+      
+      'construction|contractor|builder|plumbing|electric': `
+Common pain points: Project estimation accuracy, scheduling complexity, material waste, cash flow management
+AI opportunities: AI-powered estimation, resource/schedule optimization, material forecasting, automated progress tracking
+Typical ROI: 15-25% improvement in estimate accuracy, 20-30% reduction in material waste`,
+    };
+    
+    for (const [pattern, insights] of Object.entries(industryMap)) {
+      if (new RegExp(pattern, 'i').test(categoryLower)) {
+        return insights;
+      }
+    }
+    
+    return `General opportunity: Most businesses in this category underutilize their data. Common wins include workflow automation (20-40% time savings), predictive analytics for demand/inventory, and customer intelligence systems.`;
+  }
+
+  /**
    * Generate an email subject line
    */
   async generateSubjectLine({ prospect, emailBody }) {
-    const systemPrompt = `You are an email marketing expert. Generate compelling, spam-filter-safe subject lines.`;
+    const systemPrompt = `You generate subject lines that busy executives actually open. 
+You avoid anything that sounds like marketing or sales spam.
+Your subject lines sound like they're from a peer or colleague, not a vendor.`;
     
-    const prompt = `Generate a subject line for this cold email to ${prospect.business_name}:
+    const prompt = `Generate a subject line for this cold email to ${prospect.business_name} (${prospect.category || 'business'}):
 
-${emailBody.substring(0, 500)}...
+Email preview:
+${emailBody.substring(0, 400)}...
 
-Requirements:
-- Under 50 characters
-- Personalized if possible
-- Creates curiosity or offers clear value
-- No clickbait or spam triggers
+REQUIREMENTS:
+- Under 45 characters (will get cut off on mobile otherwise)
+- Sound like a human, not a marketer
+- Reference their business/industry specifically if possible
+- Create genuine curiosity OR offer concrete value
+- AVOID: "Quick question", "Opportunity", "Partnership", emojis, ALL CAPS, excessive punctuation
 
-Return ONLY the subject line, nothing else.`;
+GOOD EXAMPLES:
+- "re: ${prospect.business_name} operations"
+- "idea for reducing [specific pain point]"
+- "[Industry] data insight"
+- "noticed something about ${prospect.business_name}"
+
+Return ONLY the subject line text, nothing else.`;
 
     const result = await this.complete({ prompt, systemPrompt, maxTokens: 50, temperature: 0.7 });
-    return result.text.trim().replace(/^["']|["']$/g, '');
+    return result.text.trim().replace(/^["']|["']$/g, '').replace(/^Subject:\s*/i, '');
   }
 
   /**
@@ -297,24 +429,42 @@ Return your analysis as JSON:
    * Generate a follow-up email based on context
    */
   async generateFollowUp({ prospect, previousEmails, followUpNumber }) {
-    const systemPrompt = `You are a persistent but respectful sales professional. 
-Write follow-up emails that add value and create urgency without being pushy.`;
+    const systemPrompt = `You are Anthony from CloudHack. You write follow-ups that add NEW value — never just "bumping" or "checking in."
 
-    const prompt = `Write follow-up email #${followUpNumber} for this prospect who hasn't responded:
+Each follow-up should:
+- Bring a fresh insight, example, or angle they haven't seen
+- Be even shorter than the original (busy people appreciate brevity)
+- Feel like you're sharing something useful, not asking for something
+- Never guilt-trip or use passive aggressive language`;
 
-Business: ${prospect.business_name}
-Industry: ${prospect.category || 'Unknown'}
-Location: ${prospect.city}, ${prospect.state}
+    const industryInsights = this.getIndustryInsights(prospect.category);
 
-Previous emails sent:
-${previousEmails.map((e, i) => `Email ${i + 1}:\n${e.body?.substring(0, 200)}...`).join('\n\n')}
+    const prompt = `Write follow-up #${followUpNumber} for ${prospect.business_name} (${prospect.category || 'business'}) who hasn't responded.
 
-Guidelines for follow-up #${followUpNumber}:
-${followUpNumber === 1 ? '- Gentle reminder, reference the first email' : ''}
-${followUpNumber === 2 ? '- Add new value or angle, create mild urgency' : ''}
-${followUpNumber >= 3 ? '- Final attempt, be direct about this being the last email' : ''}
+PREVIOUS OUTREACH:
+${previousEmails.map((e, i) => `Email ${i + 1}: ${e.subject || 'No subject'}\n${e.body?.substring(0, 150)}...`).join('\n\n')}
 
-Keep it under 100 words. Return ONLY the email body.`;
+INDUSTRY CONTEXT:
+${industryInsights || 'General business'}
+
+FOLLOW-UP STRATEGY:
+${followUpNumber === 1 ? `
+- Very short (under 50 words)
+- Add ONE new data point or insight relevant to their industry
+- Don't reference "my last email" — just deliver value
+- Example angle: Share a quick stat about their industry + offer to discuss` : ''}
+${followUpNumber === 2 ? `
+- Medium length (under 75 words)  
+- Different angle than before — maybe a case study snippet or specific use case
+- Slight urgency: "working with a few [industry] businesses this quarter"
+- Make the ask even more specific` : ''}
+${followUpNumber >= 3 ? `
+- Final email — be direct but gracious (under 60 words)
+- "Closing the loop" energy — you're moving on, door stays open
+- No desperation, just professional closure
+- Leave them with one compelling thought` : ''}
+
+Return ONLY the email body. Start with their name or a casual greeting.`;
 
     const result = await this.complete({ prompt, systemPrompt, temperature: 0.8 });
     return result;

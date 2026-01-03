@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { getDb } from '../db/init.js';
+import firecrawlService from './firecrawl.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -84,18 +85,47 @@ class EnrichmentService {
 
     const websiteUrl = enrichmentResults.website || prospect.website_url;
 
-    // Step 2: If we have a website, try to scrape it for email
+    // Step 2: If we have a website, try Firecrawl first (better results), then fallback to cheerio
     if (websiteUrl && !prospect.email) {
       console.log(`🌐 Scraping website: ${websiteUrl}`);
-      const scrapedData = await this.scrapeWebsiteForContact(websiteUrl);
       
-      if (scrapedData.email) {
-        enrichmentResults.email = scrapedData.email;
-        enrichmentResults.methods.push('website_scrape');
+      // Try Firecrawl first if configured
+      if (firecrawlService.isReady()) {
+        console.log(`🔥 Using Firecrawl for: ${websiteUrl}`);
+        const firecrawlResult = await firecrawlService.scrapeWebsite(websiteUrl);
+        
+        if (firecrawlResult.success) {
+          const contactInfo = firecrawlService.extractContactInfo(firecrawlResult.content);
+          
+          if (contactInfo.email) {
+            enrichmentResults.email = contactInfo.email;
+            enrichmentResults.methods.push('firecrawl');
+          }
+          if (contactInfo.phone && !enrichmentResults.phone && !prospect.phone) {
+            enrichmentResults.phone = contactInfo.phone;
+            enrichmentResults.methods.push('firecrawl');
+          }
+          
+          // Also trigger website analysis for prospects with websites
+          console.log(`🔍 Triggering Firecrawl analysis for prospect ${prospect.id}`);
+          firecrawlService.generateWebsiteReport(prospect.id).catch(err => {
+            console.error('Background website analysis failed:', err.message);
+          });
+        }
       }
-      if (scrapedData.phone && !enrichmentResults.phone && !prospect.phone) {
-        enrichmentResults.phone = scrapedData.phone;
-        enrichmentResults.methods.push('website_scrape');
+      
+      // Fallback to cheerio if Firecrawl didn't find email
+      if (!enrichmentResults.email) {
+        const scrapedData = await this.scrapeWebsiteForContact(websiteUrl);
+        
+        if (scrapedData.email) {
+          enrichmentResults.email = scrapedData.email;
+          enrichmentResults.methods.push('website_scrape');
+        }
+        if (scrapedData.phone && !enrichmentResults.phone && !prospect.phone) {
+          enrichmentResults.phone = scrapedData.phone;
+          enrichmentResults.methods.push('website_scrape');
+        }
       }
     }
 
@@ -598,6 +628,7 @@ class EnrichmentService {
       hunterConfigured: !!hunter,
       yelpConfigured: !!yelp,
       googleConfigured: !!(google && googleCseId),
+      firecrawlConfigured: firecrawlService.isReady(),
     };
   }
 }

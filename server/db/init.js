@@ -73,6 +73,20 @@ export function initializeDatabase() {
     // Column already exists, ignore
   }
 
+  // Add website_analysis column for Firecrawl analysis data
+  try {
+    db.exec(`ALTER TABLE prospects ADD COLUMN website_analysis TEXT`);
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  // Add website_analyzed_at column to track when analysis was performed
+  try {
+    db.exec(`ALTER TABLE prospects ADD COLUMN website_analyzed_at DATETIME`);
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
   // Create activities table
   db.exec(`
     CREATE TABLE IF NOT EXISTS activities (

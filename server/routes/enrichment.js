@@ -1,6 +1,7 @@
 import express from 'express';
 import { getDb } from '../db/init.js';
 import enrichmentService from '../services/enrichment.js';
+import firecrawlService from '../services/firecrawl.js';
 
 const router = express.Router();
 
@@ -89,6 +90,52 @@ router.post('/test-scrape', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Scrape test error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Analyze a prospect's website with Firecrawl
+router.post('/analyze-website/:id', async (req, res) => {
+  try {
+    const prospectId = parseInt(req.params.id);
+    
+    if (!firecrawlService.isReady()) {
+      return res.status(503).json({ 
+        message: 'Firecrawl service not configured. Set FIRECRAWL_API_KEY in environment.',
+        configured: false,
+      });
+    }
+    
+    const result = await firecrawlService.generateWebsiteReport(prospectId);
+    
+    if (!result.success) {
+      return res.status(400).json({ message: result.error });
+    }
+    
+    res.json({
+      message: 'Website analysis complete',
+      report: result.report,
+      enrichedFields: result.enrichedFields,
+    });
+  } catch (error) {
+    console.error('Website analysis error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get stored website analysis for a prospect
+router.get('/analysis/:id', (req, res) => {
+  try {
+    const prospectId = parseInt(req.params.id);
+    const analysis = firecrawlService.getStoredAnalysis(prospectId);
+    
+    if (!analysis) {
+      return res.status(404).json({ message: 'No analysis found for this prospect' });
+    }
+    
+    res.json(analysis);
+  } catch (error) {
+    console.error('Get analysis error:', error);
     res.status(500).json({ message: error.message });
   }
 });

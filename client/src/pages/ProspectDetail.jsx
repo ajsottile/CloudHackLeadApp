@@ -4,9 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Phone, Mail, Globe, MapPin, Star, ExternalLink,
   Edit2, Trash2, Save, X, Send, MessageSquare, Clock, Check,
-  Bot, Zap, ToggleLeft, ToggleRight, RefreshCw, Loader2
+  Bot, Zap, ToggleLeft, ToggleRight, RefreshCw, Loader2, Scan,
+  TrendingUp, AlertTriangle, Lightbulb, Target, Sparkles
 } from 'lucide-react';
-import { prospectsApi, activitiesApi, campaignsApi, templatesApi, agentsApi } from '../services/api';
+import { prospectsApi, activitiesApi, campaignsApi, templatesApi, agentsApi, enrichmentApi } from '../services/api';
 
 const stages = [
   { key: 'new', label: 'New', color: 'gray' },
@@ -44,6 +45,14 @@ function ProspectDetail() {
   const { data: followUpSequence } = useQuery({
     queryKey: ['follow-up-sequence', id],
     queryFn: () => agentsApi.getSequence(id),
+  });
+
+  // Website Analysis query
+  const { data: websiteAnalysis, isLoading: isAnalysisLoading } = useQuery({
+    queryKey: ['website-analysis', id],
+    queryFn: () => enrichmentApi.getAnalysis(id),
+    enabled: !!prospect?.website_url,
+    retry: false,
   });
 
   const updateMutation = useMutation({
@@ -94,6 +103,16 @@ function ProspectDetail() {
       queryClient.invalidateQueries({ queryKey: ['activities', id] });
       queryClient.invalidateQueries({ queryKey: ['prospect-campaigns', id] });
       queryClient.invalidateQueries({ queryKey: ['follow-up-sequence', id] });
+    },
+  });
+
+  // Website analysis mutation
+  const analyzeWebsiteMutation = useMutation({
+    mutationFn: () => enrichmentApi.analyzeWebsite(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['website-analysis', id] });
+      queryClient.invalidateQueries({ queryKey: ['prospect', id] });
+      queryClient.invalidateQueries({ queryKey: ['activities', id] });
     },
   });
 
@@ -216,6 +235,16 @@ function ProspectDetail() {
               <h2 className="text-lg font-semibold text-white mb-3">Notes</h2>
               <p className="text-gray-300 whitespace-pre-wrap">{prospect.notes}</p>
             </div>
+          )}
+
+          {/* Website Analysis Section */}
+          {prospect.website_url && (
+            <WebsiteAnalysisSection
+              analysis={websiteAnalysis}
+              isLoading={isAnalysisLoading}
+              onAnalyze={() => analyzeWebsiteMutation.mutate()}
+              isAnalyzing={analyzeWebsiteMutation.isPending}
+            />
           )}
         </div>
 
@@ -522,6 +551,183 @@ function EditModal({ prospect, onClose, onSave, isSaving }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function WebsiteAnalysisSection({ analysis, isLoading, onAnalyze, isAnalyzing }) {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  // Parse the analysis data
+  const analysisData = analysis?.analysis?.analysis || null;
+  const analyzedAt = analysis?.analyzedAt;
+
+  const getImpactColor = (impact) => {
+    switch (impact?.toLowerCase()) {
+      case 'high': return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
+      case 'medium': return 'text-amber-400 bg-amber-500/10 border-amber-500/30';
+      case 'low': return 'text-gray-400 bg-gray-500/10 border-gray-500/30';
+      default: return 'text-gray-400 bg-gray-500/10 border-gray-500/30';
+    }
+  };
+
+  const getTypeIcon = (type) => {
+    switch (type?.toLowerCase()) {
+      case 'chatbot': return <MessageSquare className="w-4 h-4" />;
+      case 'automation': return <Zap className="w-4 h-4" />;
+      case 'analytics': return <TrendingUp className="w-4 h-4" />;
+      case 'website': return <Globe className="w-4 h-4" />;
+      case 'ai': return <Sparkles className="w-4 h-4" />;
+      default: return <Lightbulb className="w-4 h-4" />;
+    }
+  };
+
+  return (
+    <div className="bg-dark-800 rounded-xl border border-dark-600 overflow-hidden">
+      <div 
+        className="flex items-center justify-between p-5 cursor-pointer hover:bg-dark-700/50 transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-orange-500/10 rounded-lg">
+            <Scan className="w-5 h-5 text-orange-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-white">Website Analysis</h2>
+            {analyzedAt && (
+              <p className="text-xs text-gray-500">
+                Analyzed {new Date(analyzedAt).toLocaleDateString()}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); onAnalyze(); }}
+            disabled={isAnalyzing}
+            className="flex items-center gap-2 px-3 py-1.5 bg-orange-500/10 border border-orange-500/30 rounded-lg text-orange-400 hover:bg-orange-500/20 transition-colors text-sm disabled:opacity-50"
+          >
+            {isAnalyzing ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+            {isAnalyzing ? 'Analyzing...' : analysisData ? 'Re-analyze' : 'Analyze'}
+          </button>
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="border-t border-dark-600 p-5">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 text-orange-400 animate-spin" />
+            </div>
+          ) : !analysisData ? (
+            <div className="text-center py-8">
+              <Scan className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+              <p className="text-gray-400 text-sm">No analysis yet</p>
+              <p className="text-gray-500 text-xs mt-1">
+                Click "Analyze" to scan this website for AI opportunities
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {/* Score & Summary */}
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500/20 to-amber-500/20 border border-orange-500/30 flex items-center justify-center">
+                  <span className="text-2xl font-bold text-orange-400">
+                    {analysisData.overallScore || '?'}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm text-gray-400">Digital Presence Score</span>
+                    <span className="text-xs text-gray-500">/10</span>
+                  </div>
+                  <p className="text-gray-300 text-sm">{analysisData.summary}</p>
+                </div>
+              </div>
+
+              {/* AI Opportunities */}
+              {analysisData.opportunities?.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+                    <Target className="w-4 h-4 text-cyan-400" />
+                    AI & Automation Opportunities
+                  </h3>
+                  <div className="space-y-2">
+                    {analysisData.opportunities.map((opp, idx) => (
+                      <div 
+                        key={idx}
+                        className="flex items-start gap-3 p-3 bg-dark-700/50 rounded-lg border border-dark-600"
+                      >
+                        <div className="p-1.5 bg-dark-600 rounded text-cyan-400">
+                          {getTypeIcon(opp.type)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-white text-sm font-medium">{opp.title}</span>
+                            <span className={`px-2 py-0.5 rounded text-xs border ${getImpactColor(opp.impact)}`}>
+                              {opp.impact} impact
+                            </span>
+                          </div>
+                          <p className="text-gray-400 text-xs mt-1">{opp.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Strengths & Weaknesses */}
+              <div className="grid grid-cols-2 gap-4">
+                {analysisData.strengths?.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
+                      Strengths
+                    </h3>
+                    <ul className="space-y-1">
+                      {analysisData.strengths.map((s, idx) => (
+                        <li key={idx} className="text-xs text-emerald-400 flex items-start gap-1">
+                          <Check className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                          <span>{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {analysisData.weaknesses?.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
+                      Weaknesses
+                    </h3>
+                    <ul className="space-y-1">
+                      {analysisData.weaknesses.map((w, idx) => (
+                        <li key={idx} className="text-xs text-amber-400 flex items-start gap-1">
+                          <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                          <span>{w}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Recommended Pitch */}
+              {analysisData.recommendedPitch && (
+                <div className="p-3 bg-cyan-500/5 border border-cyan-500/20 rounded-lg">
+                  <h3 className="text-xs font-medium text-cyan-400 uppercase tracking-wide mb-1 flex items-center gap-1">
+                    <Lightbulb className="w-3 h-3" />
+                    Recommended Pitch Angle
+                  </h3>
+                  <p className="text-sm text-gray-300">{analysisData.recommendedPitch}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

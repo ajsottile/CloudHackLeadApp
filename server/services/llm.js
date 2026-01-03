@@ -146,8 +146,36 @@ class LLMService {
 
   /**
    * Generate a personalized email for a prospect
+   * @param {object} options
+   * @param {object} options.prospect - The prospect data
+   * @param {object} [options.template] - Optional email template
+   * @param {object} [options.context] - Additional context
+   * @param {object} [options.websiteAnalysis] - Website analysis from Firecrawl
    */
-  async generateOutreachEmail({ prospect, template, context = {} }) {
+  async generateOutreachEmail({ prospect, template, context = {}, websiteAnalysis = null }) {
+    // Build context about website analysis if available
+    let analysisContext = '';
+    if (websiteAnalysis?.analysis) {
+      const analysis = websiteAnalysis.analysis;
+      analysisContext = `
+WEBSITE ANALYSIS (from Firecrawl):
+- Overall Digital Score: ${analysis.overallScore || 'N/A'}/10
+- Summary: ${analysis.summary || 'N/A'}
+${analysis.opportunities?.length > 0 ? `
+TOP OPPORTUNITIES IDENTIFIED:
+${analysis.opportunities.slice(0, 3).map(o => `• ${o.title}: ${o.description} (${o.impact} impact)`).join('\n')}
+` : ''}
+${analysis.weaknesses?.length > 0 ? `
+WEAKNESSES NOTED:
+${analysis.weaknesses.slice(0, 3).map(w => `• ${w}`).join('\n')}
+` : ''}
+${analysis.recommendedPitch ? `
+RECOMMENDED PITCH ANGLE: ${analysis.recommendedPitch}
+` : ''}
+
+IMPORTANT: Use the website analysis insights to make the email highly specific and valuable. Reference concrete opportunities you noticed about their website/business.`;
+    }
+
     const systemPrompt = `You are an expert B2B sales copywriter for CloudHack, a tech consulting company. 
 Your job is to write personalized, compelling cold emails that feel genuine and human.
 
@@ -158,11 +186,13 @@ Guidelines:
 - Include a clear, low-pressure call to action
 - Avoid overused phrases like "I hope this email finds you well"
 - Make the value proposition clear and relevant to their business
+${websiteAnalysis ? '- USE THE WEBSITE ANALYSIS to craft a highly targeted, specific pitch that demonstrates you understand their business' : ''}
 
 CloudHack services:
 - Web development (modern, mobile-friendly websites)
 - Cloud integration and migrations
 - AI/ML implementations (chatbots, automation, data analysis)
+- Custom SaaS product development
 - Business intelligence and dashboards`;
 
     const prompt = `Generate a personalized cold email for this prospect:
@@ -172,6 +202,7 @@ Category/Industry: ${prospect.category || 'Unknown'}
 Location: ${prospect.city ? `${prospect.city}, ${prospect.state}` : 'Unknown'}
 Rating: ${prospect.rating || 'N/A'} stars (${prospect.review_count || 0} reviews)
 Has Website: ${prospect.website_url ? 'Yes' : 'No'}
+${analysisContext}
 
 ${template ? `Base your email on this template style:\n${template.body}\n\nBut personalize it significantly for this specific business.` : ''}
 

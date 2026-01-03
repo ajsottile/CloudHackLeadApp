@@ -326,5 +326,19 @@ export const enrichmentApi = {
     });
     return handleResponse(response);
   },
+  
+  // Analyze a prospect's website with Firecrawl
+  analyzeWebsite: async (prospectId) => {
+    const response = await fetch(`${API_BASE}/enrichment/analyze-website/${prospectId}`, {
+      method: 'POST',
+    });
+    return handleResponse(response);
+  },
+  
+  // Get stored website analysis for a prospect
+  getAnalysis: async (prospectId) => {
+    const response = await fetch(`${API_BASE}/enrichment/analysis/${prospectId}`);
+    return handleResponse(response);
+  },
 };
 

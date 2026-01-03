@@ -2,6 +2,7 @@ import { getDb } from '../db/init.js';
 import llmService from '../services/llm.js';
 import orchestrator from './orchestrator.js';
 import emailService from '../services/email.js';
+import firecrawlService from '../services/firecrawl.js';
 
 /**
  * Outreach Agent - Generates and sends initial outreach emails to prospects
@@ -60,10 +61,21 @@ class OutreachAgent {
         ? db.prepare('SELECT * FROM templates WHERE id = ?').get(payload.templateId)
         : this.selectBestTemplate(prospect);
 
+      // Get website analysis if available
+      let websiteAnalysis = null;
+      if (prospect.website_url) {
+        const storedAnalysis = firecrawlService.getStoredAnalysis(prospectId);
+        if (storedAnalysis) {
+          websiteAnalysis = storedAnalysis.analysis;
+          console.log(`📊 Using website analysis for outreach to ${prospect.business_name}`);
+        }
+      }
+
       const result = await llmService.generateOutreachEmail({
         prospect,
         template,
         context: { followUpNumber: 0 },
+        websiteAnalysis,
       });
 
       emailBody = result.text;

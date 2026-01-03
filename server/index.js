@@ -14,6 +14,7 @@ import llmService from './services/llm.js';
 import emailService from './services/email.js';
 import scheduler from './services/scheduler.js';
 import enrichmentService from './services/enrichment.js';
+import firecrawlService from './services/firecrawl.js';
 
 dotenv.config();
 
@@ -48,6 +49,9 @@ console.log('📧 Email Service:', {
 
 // Initialize and start the scheduler
 scheduler.start();
+
+// Initialize Firecrawl service
+firecrawlService.initialize();
 
 // Log enrichment service status
 console.log('🔍 Enrichment Service:', enrichmentService.getStats());
